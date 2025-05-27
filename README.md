@@ -1,26 +1,15 @@
 # README.qmd
+Bartosz Czyż
 
+## Intro
 
-## Quarto
+Ropozytroium ćwiczeń z projektów ML wykonywanych zgodnie z filozofią
+tidymodels.
 
-Quarto enables you to weave together content and executable code into a
-finished document. To learn more about Quarto see <https://quarto.org>.
+## Dobre praktyki
 
-## Running Code
-
-When you click the **Render** button a document will be generated that
-includes both content and the output of embedded code. You can embed
-code like this:
-
-``` r
-1 + 1
-```
-
-    [1] 2
-
-You can add options to executable code like this
-
-    [1] 4
-
-The `echo: false` option disables the printing of code (only output is
-displayed).
+- .gitignore (`*.rozszerzenie`, `folder/`, `/.quarto/`)
+- nie generuj folderu plikow pomocniczych przy renderowaniu quarto
+  (`self-contained: true` i `embed-resources: true`)
+- cache - przyspieszenie renderowania
+- qmd -\> md (format: gfm)
