@@ -13,3 +13,9 @@ tidymodels.
   (`self-contained: true` i `embed-resources: true`)
 - cache - przyspieszenie renderowania
 - qmd -\> md (format: gfm)
+
+## branch
+
+1)  tworzenie branch z poziomu rstudio
+2)  wysyłanie zatwierdzeń
+3)  gdzie trafiły zatwierdzenia
