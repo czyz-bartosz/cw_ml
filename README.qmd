@@ -1,0 +1,17 @@
+---
+title: "README.qmd"
+author: "Bartosz Czyż"
+format: gfm
+---
+
+## Intro
+
+Ropozytroium ćwiczeń z projektów ML wykonywanych zgodnie z filozofią tidymodels.
+
+## Dobre praktyki
+
+* .gitignore (`*.rozszerzenie`, `folder/`, `/.quarto/`)
+* nie generuj folderu plikow pomocniczych przy renderowaniu quarto (`self-contained: true` i `embed-resources: true`)
+* cache - przyspieszenie renderowania
+* qmd -> md (format: gfm)
+
