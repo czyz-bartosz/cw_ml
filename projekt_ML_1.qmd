@@ -166,5 +166,74 @@ bayes_fit <-
 ```
 
 ```{r}
-bayes_fit$fit #za mała dokąłdność
+bayes_fit |> print(digits = 4)
 ```
+
+```{r}
+bayes_fit |> tidy(conf.int = T)
+```
+
+```{r}
+bayes_pred <- 
+new_points |> 
+  bind_cols(predict(bayes_fit, new_data = new_points)) |> 
+  bind_cols(predict(bayes_fit, new_data = new_points, type = "conf_int"))
+```
+
+```{r}
+bayes_pred |>
+  ggplot(aes(x = food_regime,
+             y = .pred)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = .pred_lower,
+                    ymax = .pred_upper),
+                width = 0.2) +
+  facet_wrap(~ initial_volume) +
+  theme_bw() +
+  labs(y = "urchni size")
+```
+
+```{r}
+ggplot(urchins,
+       aes(initial_volume, width)) +      # returns a ggplot object 
+  geom_jitter() +                         # same
+  geom_smooth(method = lm, se = FALSE) +  # same                    
+  labs(x = "Volume", y = "Width")         # etc
+```
+
+```{r}
+library(GGally)
+
+colnames(airquality) <- tolower(colnames(airquality)) # nazwy kolumn z malych liter
+
+air <-
+  airquality |>
+  as_tibble() |> # zmiana na df na tibble
+  na.omit() |> # pominiecie pustych
+  select(-day) |> # bez kolumny day
+  mutate(month = factor(month)) # encode vector to factor
+
+ggpairs(air)
+
+model <- lm(ozone ~ solar.r + wind + temp + month, data = air)
+
+```
+
+```{r}
+summary(model)
+```
+
+```{r}
+nowe_dane <- data.frame(
+  solar.r = c(200, 150),
+  wind = c(10, 7),
+  temp = c(85, 90),
+  month = factor(c(6, 8), levels = levels(air$month))
+)
+
+predict(model, newdata = nowe_dane)
+```
+
+```{r}
+anova(model)
+<!-- ``` -->
