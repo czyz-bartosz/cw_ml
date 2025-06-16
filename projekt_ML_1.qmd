@@ -201,6 +201,8 @@ ggplot(urchins,
   labs(x = "Volume", y = "Width")         # etc
 ```
 
+# Cw 1
+
 ```{r}
 library(GGally)
 
@@ -214,13 +216,32 @@ air <-
   mutate(month = factor(month)) # encode vector to factor
 
 ggpairs(air)
+```
 
-model <- lm(ozone ~ solar.r + wind + temp + month, data = air)
+```{r}
+# Specyfikacja modelu liniowego
+lm_mod <- linear_reg() |>
+  set_engine("lm") |>
+  set_mode("regression")
+
+
+# Dopasowanie modelu do całych danych
+lm_fit <- fit(lm_mod, ozone ~ solar.r + wind + temp + month, data = air)
 
 ```
 
 ```{r}
-summary(model)
+summary(lm_fit)
+```
+
+```{r}
+anova(extract_fit_engine(lm_fit))     # test istotności ogólnej
+```
+
+Wyniki testu ANOVA dla modelu regresji liniowej wskazują, że zmienne solar.r, wind oraz temp są statystycznie istotne i wywierają znaczący wpływ na stężenie ozonu (ozone). Zmienna month wykazuje p-wartość 0.075, co oznacza, że jej wpływ nie jest istotny statystycznie na poziomie 0.05. Oznacza to, że miesiąc może w niewielkim stopniu wpływać na wartość O₃, lecz jego wpływ nie jest tak jednoznaczny jak w przypadku pozostałych zmiennych.
+
+```{r}
+summary(extract_fit_engine(lm_fit))   # współczynniki i p-value
 ```
 
 ```{r}
@@ -231,9 +252,9 @@ nowe_dane <- data.frame(
   month = factor(c(6, 8), levels = levels(air$month))
 )
 
-predict(model, newdata = nowe_dane)
+predict(lm_fit, new_data = nowe_dane)
 ```
 
-```{r}
-anova(model)
-<!-- ``` -->
+## Wnioski
+
+W celu pełnej oceny, czy jest to model najlepszy, należałoby porównać go z innymi modelami, np. drzewami decyzyjnymi lub lasem losowym. Dopiero wtedy można byłoby stwierdzić, który model zapewnia najlepsze dopasowanie i trafność predykcji.
