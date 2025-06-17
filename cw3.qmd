@@ -1,0 +1,313 @@
+---
+title: "Projekt Machine Learning 3"
+author: "Bartosz Czyż"
+format: 
+  html:
+    self-contained: true
+    toc: true
+    toc-depth: 4
+    toc-location: right
+    toc-title: "Spis treści"
+    number-sections: true
+    number-depth: 4
+    code-fold: show
+    code-summary: "Pokaż kod"
+    code-tools: true
+    code-block-bg: true
+    code-block-border-left: "black"
+    code-line-numbers: false
+    code-copy: true
+    html-math-method: katex
+    smooth-scroll: true
+    anchor-sections: true
+    link-external-icon: true
+    link-external-newwindow: true
+    theme:
+      light: cosmo
+      dark: darkly
+    fontsize: 1.0em
+    linestretch: 1.5
+execute:
+  warning: false
+  echo: true
+  error: false
+editor_options: 
+  chunk_output_type: console
+---
+
+# Analiza komórek
+
+```{r}
+#| label: setup
+#| message: false
+library(ranger)
+library(modeldata)
+library(tidymodels)
+library(ggplot2)
+tidymodels_prefer()
+```
+
+## Wczytanie danych
+```{r}
+data("cells", package = "modeldata")
+cells
+```
+
+## Analiza rozkładu klas
+```{r}
+cells |>
+  count(class) |>
+  mutate(prop = n/sum(n) * 100) |>
+  mutate(prop = round(prop, digits = 1))
+```
+
+## Podział danych
+```{r}
+set.seed(123)
+cell_split <- initial_split(
+  data = cells |> select(-case),
+  strata = class, 
+  prop = 3/4
+)
+
+cell_train <- training(cell_split)
+cell_test <- testing(cell_split)
+```
+
+## Rozmiary zbiorów
+```{r}
+# Liczba obserwacji
+nrow(cell_test)
+nrow(cell_train)
+
+# Proporcje
+nrow(cell_test)/nrow(cells)
+nrow(cell_train)/nrow(cells)
+```
+
+## Rozkład klas w zbiorze testowym
+```{r}
+cell_test |> 
+  count(class) |> 
+  mutate(prop = n/sum(n))
+```
+
+## Rozkład klas w zbiorze treningowym
+```{r}
+cell_train |> 
+  count(class) |> 
+  mutate(prop = n/sum(n))
+```
+
+## Budowa modelu lasu losowego
+```{r}
+rf_mod <- 
+  rand_forest() |> 
+  set_engine("ranger") |> 
+  set_mode("classification")
+```
+
+## Trenowanie modelu
+```{r}
+set.seed(234)
+rf_fit <- 
+  rf_mod |> 
+  fit(class ~ ., data = cell_train)
+rf_fit
+```
+
+## Predykcja na zbiorze treningowym
+```{r}
+rf_pred_train <-
+  predict(rf_fit, new_data = cell_train) |> 
+  bind_cols(predict(rf_fit, new_data = cell_train, type = "prob")) |> 
+  bind_cols(cell_train |> select(class))
+
+# Krzywa ROC
+rf_pred_train |> 
+  roc_curve(truth = class, .pred_PS) |> 
+  autoplot()
+```
+
+## Ocena modelu na zbiorze treningowym
+```{r}
+# Pole pod krzywą ROC
+rf_pred_train |> 
+  roc_auc(truth = class, .pred_PS)
+
+# Dokładność
+rf_pred_train |> 
+  accuracy(truth = class, .pred_class)
+```
+
+## Predykcja na zbiorze testowym
+```{r}
+rf_pred_test <- 
+  predict(rf_fit, new_data = cell_test) |> 
+  bind_cols(predict(rf_fit, new_data = cell_test, type = "prob")) |> 
+  bind_cols(cell_test |> select(class))
+
+# Krzywa ROC
+rf_pred_test |> 
+  roc_curve(truth = class, .pred_PS) |> 
+  autoplot()
+```
+
+## Ocena modelu na zbiorze testowym
+```{r}
+# Pole pod krzywą ROC
+rf_pred_test |> 
+  roc_auc(truth = class, .pred_PS)
+
+# Dokładność
+rf_pred_test |> 
+  accuracy(truth = class, .pred_class)
+```
+
+# Cw 3 Analiza jakości powietrza
+
+```{r}
+library(tidymodels)
+library(openair)
+library(skimr)
+library(GGally)
+library(ggpubr)
+library(lubridate)
+tidymodels_prefer()
+```
+
+## Wczytanie i przygotowanie danych
+```{r}
+set.seed(222)
+
+air <- mydata |>
+  selectByDate(year = 2002) |>
+  na.omit() |>
+  mutate(
+    ozone = cut(
+      o3,
+      breaks = c(-0.1, 10, 53),
+      labels = c("Niskie", "Wysokie")
+    )
+  )
+```
+
+## Podział na zbiór treningowy i testowy
+```{r}
+data_split <- initial_split(air, prop = 0.75, strata = ozone)
+train_data <- training(data_split)
+test_data <- testing(data_split)
+```
+
+## Przygotowanie receptury
+```{r}
+rec <- recipe(ozone ~ ., data = train_data) |>
+  step_rm(nox, o3, pm10, pm25, so2, co) |>
+  step_mutate(month = lubridate::month(date)) |>
+  step_rm(date) |>
+  step_mutate(
+    wd_sin = sin(pi * wd / 180),
+    wd_cos = cos(pi * wd / 180)
+  ) |>
+  step_rm(wd) |>
+  step_YeoJohnson(all_numeric_predictors()) |>
+  step_normalize(all_numeric_predictors()) |>
+  step_dummy(all_nominal_predictors()) |>
+  step_zv(all_predictors())
+```
+
+## Definicja modeli
+```{r}
+lr_mod <- logistic_reg() |> set_engine("glm")
+rf_mod <- rand_forest(mode = "classification", trees = 100) |> set_engine("ranger")
+```
+
+## Utworzenie workflowów
+```{r}
+lr_wf <- workflow() |> add_model(lr_mod) |> add_recipe(rec)
+rf_wf <- workflow() |> add_model(rf_mod) |> add_recipe(rec)
+```
+
+## Walidacja krzyżowa i bootstrap
+```{r}
+set.seed(222)
+cv_folds <- vfold_cv(train_data, v = 10, strata = ozone)
+boot_resamples <- bootstraps(train_data, times = 25, strata = ozone)
+```
+
+## Uczenie modeli - regresja logistyczna
+```{r}
+lr_cv <- fit_resamples(
+  lr_wf,
+  resamples = cv_folds,
+  metrics = metric_set(roc_auc),
+  control = control_resamples(save_pred = TRUE)
+)
+
+lr_boot <- fit_resamples(
+  lr_wf,
+  resamples = boot_resamples,
+  metrics = metric_set(roc_auc),
+  control = control_resamples(save_pred = TRUE)
+)
+```
+
+## Uczenie modeli - las losowy
+```{r}
+rf_cv <- fit_resamples(
+  rf_wf,
+  resamples = cv_folds,
+  metrics = metric_set(roc_auc),
+  control = control_resamples(save_pred = TRUE)
+)
+
+rf_boot <- fit_resamples(
+  rf_wf,
+  resamples = boot_resamples,
+  metrics = metric_set(roc_auc),
+  control = control_resamples(save_pred = TRUE)
+)
+```
+
+## Wyniki
+```{r}
+# Zbieranie metryk
+lr_cv_metrics <- collect_metrics(lr_cv)
+lr_boot_metrics <- collect_metrics(lr_boot)
+rf_cv_metrics <- collect_metrics(rf_cv)
+rf_boot_metrics <- collect_metrics(rf_boot)
+
+# Wyświetlenie wyników
+cat("=== Regresja logistyczna – 10-krotna CV ===\n")
+print(lr_cv_metrics)
+
+cat("\n=== Regresja logistyczna – Bootstrap ===\n")
+print(lr_boot_metrics)
+
+cat("\n=== Las losowy – 10-krotna CV ===\n")
+print(rf_cv_metrics)
+
+cat("\n=== Las losowy – Bootstrap ===\n")
+print(rf_boot_metrics)
+```
+
+## Wnioski
+
+### 1. Skuteczność modeli (ROC AUC)
+
+* **Regresja logistyczna**:
+  - Średnia wartość AUC w **10-krotnej walidacji krzyżowej**: 0.861 (błąd standardowy: 0.0068)
+  - W **bootstrapie**: 0.863 (błąd standardowy: 0.00174)
+
+* **Las losowy**:
+  - W **10-krotnej walidacji krzyżowej**: 0.924 (błąd standardowy: 0.00502)
+  - W **bootstrapie**: 0.916 (błąd standardowy: 0.00152)
+
+### 2. Porównanie modeli
+
+Model **lasu losowego** osiąga lepsze wyniki niż **regresja logistyczna** pod względem skuteczności klasyfikacji (wyższy AUC) we wszystkich przypadkach. Różnica AUC wynosi około 0.06, co wskazuje na znaczną poprawę skuteczności. Niskie błędy standardowe, szczególnie w przypadku bootstrapu, świadczą o stabilności i wiarygodności wyników.
+
+### 3. Rekomendacje
+
+* **Las losowy** powinien być preferowanym wyborem do klasyfikacji poziomu ozonu w danych z 2002 roku ze względu na wyższą dokładność i stabilność predykcji.
+* **Regresja logistyczna** może być rozważana w sytuacjach, gdzie istotna jest interpretowalność modelu.
