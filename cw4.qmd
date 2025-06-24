@@ -1,0 +1,333 @@
+---
+title: "Projekt Machine Learning 3"
+author: "Bartosz Czyż"
+format: 
+  html:
+    self-contained: true
+    toc: true
+    toc-depth: 4
+    toc-location: right
+    toc-title: "Spis treści"
+    number-sections: true
+    number-depth: 4
+    code-fold: show
+    code-summary: "Pokaż kod"
+    code-tools: true
+    code-block-bg: true
+    code-block-border-left: "black"
+    code-line-numbers: false
+    code-copy: true
+    html-math-method: katex
+    smooth-scroll: true
+    anchor-sections: true
+    link-external-icon: true
+    link-external-newwindow: true
+    theme:
+      light: cosmo
+      dark: darkly
+    fontsize: 1.0em
+    linestretch: 1.5
+execute:
+  warning: false
+  echo: true
+  error: false
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+library(tidymodels)
+
+# Dodatkowe pakiety
+library(rpart.plot)  # wizualizacja drzew decyzyjnych 
+library(vip)         # wykres wagi zmiennych
+```
+
+```{r}
+data("cells", package = "modeldata")
+cells
+```
+
+```{r}
+
+set.seed(123)
+split <- initial_split(data = cells |> select(-case), 
+                       prop = 3/4, 
+                       strata = class)
+
+train <- training(split)
+test <- testing(split)
+
+```
+
+```{r}
+
+tune_spec <- 
+  decision_tree(
+    cost_complexity = tune(), 
+    tree_depth = tune()) |> 
+  set_engine("rpart") |> 
+  set_mode("classification")
+
+tune_spec
+
+```
+
+```{r}
+
+siatka <- grid_regular(cost_complexity(), 
+                       tree_depth(), 
+                       levels = 5)
+siatka
+
+```
+
+```{r}
+
+set.seed(234)
+folds <- vfold_cv(train)
+
+set.seed(345)
+
+# workflow
+
+work <- 
+  workflow() |> 
+  add_model(tune_spec) |> 
+  add_formula(class ~ .)
+
+# statystyki oceny dokładnosci modelu 
+
+miary_oceny <-
+  yardstick::metric_set(# tym parametrem możesz definiować
+    accuracy,
+    mcc,
+    npv,
+    roc_auc)
+
+# Optymalizacja 
+
+fit_tree <-
+  work |>
+  tune_grid(
+    resamples = folds,
+    grid = siatka,
+    metrics = miary_oceny
+  )
+
+fit_tree
+
+```
+
+```{r}
+
+fit_tree |> collect_metrics()
+
+```
+
+
+```{r}
+
+fit_tree %>%
+  collect_metrics() %>%
+  mutate(tree_depth = factor(tree_depth)) %>%
+  ggplot(aes(cost_complexity, mean, color = tree_depth)) +
+  geom_line(size = 1.5, alpha = 0.6) +
+  geom_point(size = 2) +
+  facet_wrap(~ .metric, scales = "free", nrow = 2) +
+  scale_x_log10(labels = scales::label_number()) +
+  scale_color_viridis_d(option = "plasma", begin = .9, end = 0)
+
+```
+
+```{r}
+
+fit_tree |> show_best(metric = "accuracy")
+
+fit_tree |> select_best(metric ="accuracy")
+
+```
+
+```{r}
+best_mod <- fit_tree |> select_best(metric = "accuracy")
+
+final_mod <-  
+  work |> 
+  finalize_workflow(best_mod)
+```
+
+```{r}
+final_fit <- 
+  final_mod |> 
+  last_fit(split = split)
+
+final_fit %>%
+  collect_metrics()
+```
+
+```{r}
+final_fit |> 
+  collect_predictions() |> 
+  roc_curve(truth = class, .pred_PS) |> 
+  autoplot()
+```
+
+```{r}
+final_fit |> extract_workflow()
+```
+
+```{r}
+final_fit |> 
+  extract_workflow() |> 
+  extract_fit_engine() |> 
+  rpart.plot(roundint = F)
+```
+
+```{r}
+
+# wykres 
+
+final_fit |> 
+  extract_workflow() |> 
+  extract_fit_parsnip() |>
+  vip() 
+
+```
+
+```{r}
+
+# eksport danych do tabeli
+
+final_fit |>
+  extract_workflow() |>
+  extract_fit_parsnip() |>
+  vip() |> 
+  _$data |> 
+  knitr::kable(digits = 1)
+
+```
+
+## cw 4
+
+Można jeszcze hiper-parametr min_n
+
+```{r}
+args(decision_tree)
+
+?decision_tree()
+```
+
+## cw 5
+
+```{r}
+library(tidymodels)
+library(openair)
+library(skimr)
+library(GGally)
+library(ggpubr)
+library(lubridate)
+tidymodels_prefer()
+```
+
+```{r}
+set.seed(222)
+
+air <- mydata |>
+  selectByDate(year = 2002) |>
+  na.omit() |>
+  mutate(
+    ozone = cut(
+      o3,
+      breaks = c(-0.1, 10, 53),
+      labels = c("Niskie", "Wysokie")
+    )
+  )
+```
+
+```{r}
+data_split <- initial_split(air, prop = 0.75, strata = ozone)
+train_data <- training(data_split)
+test_data <- testing(data_split)
+```
+
+```{r}
+rec <- recipe(ozone ~ ., data = train_data) |>
+  step_rm(nox, o3, pm10, pm25, so2, co) |>
+  step_mutate(month = lubridate::month(date)) |>
+  step_rm(date) |>
+  step_mutate(
+    wd_sin = sin(pi * wd / 180),
+    wd_cos = cos(pi * wd / 180)
+  ) |>
+  step_rm(wd) |>
+  step_YeoJohnson(all_numeric_predictors()) |>
+  step_normalize(all_numeric_predictors()) |>
+  step_dummy(all_nominal_predictors()) |>
+  step_zv(all_predictors())
+```
+
+```{r}
+rf_mod_tune <- rand_forest(
+  mode = "classification",
+  trees = 200,
+  mtry = tune(),
+  min_n = tune()
+) |> set_engine("ranger")
+
+```
+
+```{r}
+rf_wf_tune <- workflow() |>
+  add_model(rf_mod_tune) |>
+  add_recipe(rec)
+```
+
+```{r}
+rf_grid <- grid_regular(
+  mtry(range = c(1, 5)),
+  min_n(range = c(2, 20)),
+  levels = 5
+)
+rf_grid
+```
+
+```{r}
+set.seed(222)
+cv_folds <- vfold_cv(train_data, v = 10, strata = ozone)
+```
+
+```{r}
+set.seed(123)
+rf_tuned <- tune_grid(
+  rf_wf_tune,
+  resamples = cv_folds,
+  grid = rf_grid,
+  metrics = metric_set(roc_auc),
+)
+
+rf_tuned
+```
+
+```{r}
+rf_tuned |> show_best(metric = "roc_auc")
+
+rf_best <- select_best(rf_tuned, metric = "roc_auc")
+
+rf_best
+
+rf_final_wf <- finalize_workflow(rf_wf_tune, rf_best)
+```
+
+```{r}
+final_fit <- 
+  rf_final_wf |> 
+  last_fit(split = data_split)
+
+final_fit |>
+  collect_metrics()
+```
+
+
+```{r}
+final_fit |> extract_workflow()
+```
